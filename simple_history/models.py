@@ -170,10 +170,14 @@ class HistoricalRecords(object):
         Returns a dictionary of fields that will be added to
         the Meta inner class of the historical record model.
         """
-        return {
-            'verbose_name': model._meta.verbose_name,
-            'ordering': ('-history_date', '-history_id'),
+        meta = {
+            'ordering': ('-history_date', '-history_id')
         }
+
+        if model._meta.verbose_name:
+            return meta.update({'verbose_name': 'Historical ' + model._meta.verbose_name})
+
+        return meta
 
     def post_save(self, instance, created, **kwargs):
         if not created and hasattr(instance, 'skip_history_when_saving'):
