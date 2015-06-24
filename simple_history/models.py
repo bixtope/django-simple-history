@@ -175,7 +175,7 @@ class HistoricalRecords(object):
         }
 
         if model._meta.verbose_name:
-            meta.update({'verbose_name': 'Historical ' + model._meta.verbose_name})
+            meta.update({'verbose_name': 'Historical ' + unicode(model._meta.verbose_name)})
 
         return meta
 
