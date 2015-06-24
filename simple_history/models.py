@@ -171,6 +171,7 @@ class HistoricalRecords(object):
         the Meta inner class of the historical record model.
         """
         return {
+            'verbose_name': model._meta.verbose_name,
             'ordering': ('-history_date', '-history_id'),
         }
 
