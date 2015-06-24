@@ -62,17 +62,74 @@ class Document(models.Model):
         return self.changed_by
 
 
+class Profile(User):
+    date_of_birth = models.DateField()
+
+
+class AdminProfile(models.Model):
+    profile = models.ForeignKey(Profile)
+
+
+class State(models.Model):
+    library = models.ForeignKey('Library', null=True)
+    history = HistoricalRecords()
+
+
+class Book(models.Model):
+    isbn = models.CharField(max_length=15, primary_key=True)
+    history = HistoricalRecords(verbose_name='dead trees')
+
+
+class HardbackBook(Book):
+    price = models.FloatField()
+
+
+class Bookcase(models.Model):
+    books = models.ForeignKey(HardbackBook)
+
+
+class Library(models.Model):
+    book = models.ForeignKey(Book, null=True)
+    history = HistoricalRecords()
+
+    class Meta:
+        verbose_name = 'quiet please'
+
+
+class BaseModel(models.Model):
+    pass
+
+
+class FirstLevelInheritedModel(BaseModel):
+    pass
+
+
+class SecondLevelInheritedModel(FirstLevelInheritedModel):
+    pass
+
+
+class MultiOneToOne(models.Model):
+    fk = models.ForeignKey(SecondLevelInheritedModel)
+
+
+class SelfFK(models.Model):
+    fk = models.ForeignKey('self', null=True)
+    history = HistoricalRecords()
+
+
 register(User, app='simple_history.tests', manager_name='histories')
 
 
 class ExternalModel1(models.Model):
     name = models.CharField(max_length=100)
     history = HistoricalRecords()
+
     class Meta:
         app_label = 'external'
+
 
 class ExternalModel3(models.Model):
     name = models.CharField(max_length=100)
 
 register(ExternalModel3, app='simple_history.tests.external',
-    manager_name='histories')
+         manager_name='histories')

@@ -4,7 +4,9 @@ Authors
 - Aleksey Kladov
 - Corey Bertram
 - Damien Nozay
+- Daniel Levy
 - George Vilches
+- Hamish Downer
 - Joao Pedro Francese
 - Jonathan Sanchez
 - Josh Fyne
@@ -13,6 +15,7 @@ Authors
 - Rajesh Pappula
 - Trey Hunner
 - Ulysses Vilela
+- vnagendra
 
 Background
 ==========

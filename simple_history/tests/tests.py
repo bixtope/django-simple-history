@@ -6,13 +6,16 @@ from django.test import TestCase
 from django_webtest import WebTest
 from django.core.files.base import ContentFile
 from django.core.urlresolvers import reverse
+from simple_history.tests.models import AdminProfile, Bookcase, MultiOneToOne
+from simple_history.models import HistoricalRecords
 try:
     from django.contrib.auth import get_user_model
     User = get_user_model()
 except ImportError:  # django 1.4 compatibility
     from django.contrib.auth.models import User
 
-from .models import Poll, Choice, Restaurant, Person, FileModel, Document
+from .models import (Poll, Choice, Restaurant, Person, FileModel, Document,
+                     Book, Library, State, SelfFK)
 from .models import ExternalModel1, ExternalModel3
 from simple_history import register
 from simple_history.tests.external.models import ExternalModel2, ExternalModel4
@@ -109,6 +112,10 @@ class HistoricalRecordsTest(TestCase):
             'history_type': "~",
         })
 
+    def test_save_without_historical_record_for_registered_model(self):
+        registered_model = ExternalModel3.objects.create(name='registered model')
+        self.assertTrue(hasattr(registered_model, 'save_without_historical_record'))
+
     def test_save_raises_exception(self):
         anthony = Person(name='Anthony Gillard')
         with self.assertRaises(RuntimeError):
@@ -137,6 +144,14 @@ class HistoricalRecordsTest(TestCase):
             'id': choice.id,
             'history_type': "~",
         })
+
+    def test_foreignkey_still_allows_reverse_lookup_via_set_attribute(self):
+        lib = Library.objects.create()
+        state = State.objects.create(library=lib)
+        self.assertTrue(hasattr(lib, 'state_set'))
+        self.assertIsNone(state._meta.get_field('library').rel.related_name,
+                          "the '+' shouldn't leak through to the original "
+                          "model's field related_name")
 
     def test_file_field(self):
         model = FileModel.objects.create(file=get_fake_file('name'))
@@ -175,6 +190,38 @@ class HistoricalRecordsTest(TestCase):
         self.assertEqual([d.history_user for d in document.history.all()],
                          [None, user2, user1])
 
+    def test_non_default_primary_key_save(self):
+        book1 = Book.objects.create(isbn='1-84356-028-1')
+        book2 = Book.objects.create(isbn='1-84356-028-2')
+        library = Library.objects.create(book=book1)
+        library.book = book2
+        library.save()
+        library.book = None
+        library.save()
+        self.assertEqual([l.book_id for l in library.history.all()],
+                         [None, book2.pk, book1.pk])
+
+    def test_string_defined_foreign_key_save(self):
+        library1 = Library.objects.create()
+        library2 = Library.objects.create()
+        state = State.objects.create(library=library1)
+        state.library = library2
+        state.save()
+        state.library = None
+        state.save()
+        self.assertEqual([s.library_id for s in state.history.all()],
+                         [None, library2.pk, library1.pk])
+
+    def test_self_referential_foreign_key(self):
+        model = SelfFK.objects.create()
+        other = SelfFK.objects.create()
+        model.fk = model
+        model.save()
+        model.fk = other
+        model.save()
+        self.assertEqual([m.fk_id for m in model.history.all()],
+                         [other.id, model.id, None])
+
     def test_raw_save(self):
         document = Document()
         document.save_base(raw=True)
@@ -185,6 +232,17 @@ class HistoricalRecordsTest(TestCase):
             'id': document.id,
             'history_type': "~",
         })
+
+    def test_user_can_set_verbose_name(self):
+        b = Book(isbn='54321')
+        b.save()
+        self.assertEqual('dead trees', b.history.all()[0]._meta.verbose_name)
+
+    def test_historical_verbose_name_follows_model_verbose_name(self):
+        l = Library()
+        l.save()
+        self.assertEqual('historical quiet please',
+                         l.history.get()._meta.verbose_name)
 
 
 class RegisterTest(TestCase):
@@ -211,31 +269,62 @@ class RegisterTest(TestCase):
         self.assertFalse(hasattr(User, 'again'))
 
 
+class CreateHistoryModelTests(TestCase):
+
+    def test_create_history_model_with_one_to_one_field_to_integer_field(self):
+        records = HistoricalRecords()
+        records.module = AdminProfile.__module__
+        try:
+            records.create_history_model(AdminProfile)
+        except:
+            self.fail("SimpleHistory should handle foreign keys to one to one"
+                      "fields to integer fields without throwing an exception")
+
+    def test_create_history_model_with_one_to_one_field_to_char_field(self):
+        records = HistoricalRecords()
+        records.module = Bookcase.__module__
+        try:
+            records.create_history_model(Bookcase)
+        except:
+            self.fail("SimpleHistory should handle foreign keys to one to one"
+                      "fields to char fields without throwing an exception.")
+
+    def test_create_history_model_with_multiple_one_to_ones(self):
+        records = HistoricalRecords()
+        records.module = MultiOneToOne.__module__
+        try:
+            records.create_history_model(MultiOneToOne)
+        except:
+            self.fail("SimpleHistory should handle foreign keys to one to one"
+                      "fields to one to one fields without throwing an "
+                      "exception.")
+
+
 class AppLabelTest(TestCase):
     def get_table_name(self, manager):
         return manager.model._meta.db_table
 
     def test_explicit_app_label(self):
         self.assertEqual(self.get_table_name(ExternalModel1.objects),
-            'external_externalmodel1')
+                         'external_externalmodel1')
         self.assertEqual(self.get_table_name(ExternalModel1.history),
-            'external_historicalexternalmodel1')
+                         'external_historicalexternalmodel1')
 
     def test_default_app_label(self):
         self.assertEqual(self.get_table_name(ExternalModel2.objects),
-            'external_externalmodel2')
+                         'external_externalmodel2')
         self.assertEqual(self.get_table_name(ExternalModel2.history),
-            'external_historicalexternalmodel2')
+                         'external_historicalexternalmodel2')
 
     def test_register_app_label(self):
         self.assertEqual(self.get_table_name(ExternalModel3.objects),
-            'tests_externalmodel3')
+                         'tests_externalmodel3')
         self.assertEqual(self.get_table_name(ExternalModel3.histories),
-            'external_historicalexternalmodel3')
+                         'external_historicalexternalmodel3')
         self.assertEqual(self.get_table_name(ExternalModel4.objects),
-            'external_externalmodel4')
+                         'external_externalmodel4')
         self.assertEqual(self.get_table_name(ExternalModel4.histories),
-            'tests_historicalexternalmodel4')
+                         'tests_historicalexternalmodel4')
 
 
 class HistoryManagerTest(TestCase):
@@ -312,14 +401,15 @@ def get_history_url(model, history_index=None):
     if history_index is not None:
         history = model.history.order_by('history_id')[history_index]
         return reverse('admin:%s_%s_simple_history' % info,
-            args=[model.pk, history.history_id])
+                       args=[model.pk, history.history_id])
     else:
         return reverse('admin:%s_%s_history' % info, args=[model.pk])
 
 
 class AdminSiteTest(WebTest):
     def setUp(self):
-        self.user = User.objects.create_superuser('user_login', 'u@example.com', 'pass')
+        self.user = User.objects.create_superuser('user_login',
+                                                  'u@example.com', 'pass')
 
     def login(self, user=None):
         if user is None:
